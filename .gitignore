@@ -205,3 +205,36 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Виртуальное окружение
+.venv/
+venv/
+
+# Poetry
+poetry.lock
+
+# Распространяемые файлы
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+
+# Данные
+data/
+
+# Логи
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Системные
+.DS_Store
+
+# Codespace
+.devcontainer/

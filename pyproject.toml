@@ -1,0 +1,50 @@
+[tool.poetry]
+name = "finalproject-polyakova-polina-m-555"
+version = "1.0.0"
+description = "Валютный кошелек"
+authors = ["Polyapolyakov <Inthetrans@yandex.ru>"]
+readme = "README.md"
+packages = [
+    { include = "valutatrade_hub", from = "." },
+]
+
+[tool.poetry.scripts]
+valutatrade = "main:main"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+prettytable = "^3.10.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.5.6"
+
+[tool.valutatrade]
+data_dir = "data"
+log_dir = "logs"
+log_format = "json"
+log_max_bytes = 10485760
+log_backup_count = 5
+log_to_console = true
+rates_ttl_seconds = 300
+default_base_currency = "USD"
+supported_currencies = [
+    "USD", "EUR", "GBP", "JPY", "CHF",
+    "CAD", "AUD", "RUB", "CNY", "BTC",
+    "ETH", "XRP", "LTC", "ADA"
+]
+api_endpoint = "https://api.example.com/rates"
+api_timeout = 10
+debug = false
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = ["venv", ".venv", "dist", "__pycache__", "data", "logs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N"]
+ignore = []
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
