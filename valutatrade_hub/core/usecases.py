@@ -122,22 +122,21 @@ class PortfolioManager:
     
     @log_action("BUY")
     def buy(self, currency_code: str, amount: float) -> Tuple[bool, str]:
-        """Купить валюту."""
         if not self.user_manager.is_logged_in():
             return False, "Сначала выполните login"
-        
+    
         try:
             currency = get_currency(currency_code)
         except CurrencyNotFoundError:
             msg = f"Неизвестная валюта '{currency_code}'"
             return False, msg
-        
+    
         if amount <= 0:
             msg = "Количество должно быть положительным"
             return False, msg
-        
+    
         user = self.user_manager.current_user
-        
+    
         portfolios = load_json("data/portfolios.json", [])
         portfolio_data = next(
             (p for p in portfolios if p["user_id"] == user.user_id),
@@ -145,62 +144,75 @@ class PortfolioManager:
         )
         portfolio = Portfolio.from_dict(portfolio_data) if portfolio_data \
             else Portfolio(user.user_id)
-        
+    
+        available_payment_currencies = []
+        for wallet_currency in portfolio._wallets.keys():
+            if wallet_currency.upper() != currency_code.upper():
+                wallet = portfolio.get_wallet(wallet_currency)
+                if wallet and wallet.balance > 0:
+                    available_payment_currencies.append(wallet_currency)
+    
+        if not available_payment_currencies:
+            msg = "Нет доступных средств для оплаты. Пополните баланс."
+            return False, msg
+    
+        payment_currency = available_payment_currencies[0]
+        payment_wallet = portfolio.get_wallet(payment_currency)
+    
         try:
-            rate = get_exchange_rate(currency_code, "USD")
-            cost_usd = amount * rate
-        except Exception:
-            msg = f"Не удалось получить курс для {currency_code}"
+            rate = get_exchange_rate(currency_code, payment_currency)
+            cost_in_payment = amount * rate
+        except Exception as e:
+            msg = f"Не удалось получить курс {currency_code}→{payment_currency}: {str(e)}"
             return False, msg
-        
-        usd_wallet = portfolio.get_wallet("USD")
-        if not usd_wallet or usd_wallet.balance < cost_usd:
-            required = format_currency(cost_usd, 'USD')
-            msg = f"Недостаточно средств. Требуется: {required}"
+    
+        if payment_wallet.balance < cost_in_payment:
+            available = format_currency(payment_wallet.balance, payment_currency)
+            required = format_currency(cost_in_payment, payment_currency)
+            msg = f"Недостаточно {payment_currency}. Доступно: {available}, требуется: {required}"
             return False, msg
-        
+    
         target_wallet = portfolio.get_wallet(currency_code)
         if not target_wallet:
             target_wallet = portfolio.add_wallet(currency_code)
-        
+    
         try:
-            usd_wallet.withdraw(cost_usd)
+            payment_wallet.withdraw(cost_in_payment)
             target_wallet.deposit(amount)
         except InsufficientFundsError as e:
             return False, str(e)
-        
+    
         for i, p in enumerate(portfolios):
             if p["user_id"] == user.user_id:
                 portfolios[i] = portfolio.to_dict()
                 break
         else:
             portfolios.append(portfolio.to_dict())
-        
+    
         save_json("data/portfolios.json", portfolios)
-        
+    
         bought = format_currency(amount, currency_code)
-        cost = format_currency(cost_usd, 'USD')
+        cost = format_currency(cost_in_payment, payment_currency)
         msg = f"Куплено {bought} за {cost}"
         return True, msg
     
     @log_action("SELL")
     def sell(self, currency_code: str, amount: float) -> Tuple[bool, str]:
-        """Продать валюту."""
         if not self.user_manager.is_logged_in():
             return False, "Сначала выполните login"
-        
+    
         try:
             currency = get_currency(currency_code)
         except CurrencyNotFoundError:
             msg = f"Неизвестная валюта '{currency_code}'"
             return False, msg
-        
+    
         if amount <= 0:
             msg = "Количество должно быть положительным"
             return False, msg
-        
+    
         user = self.user_manager.current_user
-        
+    
         portfolios = load_json("data/portfolios.json", [])
         portfolio_data = next(
             (p for p in portfolios if p["user_id"] == user.user_id),
@@ -208,46 +220,53 @@ class PortfolioManager:
         )
         if not portfolio_data:
             return False, "Портфель не найден"
-        
+    
         portfolio = Portfolio.from_dict(portfolio_data)
-        
+    
         source_wallet = portfolio.get_wallet(currency_code)
         if not source_wallet:
             msg = f"У вас нет кошелька '{currency_code}'"
             return False, msg
-        
+    
         if source_wallet.balance < amount:
             available = format_currency(source_wallet.balance, currency_code)
             msg = f"Недостаточно {currency_code}. Доступно: {available}"
             return False, msg
-        
+    
+        target_currency = "USD"
+        if "USD" not in portfolio._wallets and portfolio._wallets:
+            for wallet_currency in portfolio._wallets.keys():
+                if wallet_currency != currency_code:
+                    target_currency = wallet_currency
+                    break
+    
         try:
-            rate = get_exchange_rate(currency_code, "USD")
-            revenue_usd = amount * rate
-        except Exception:
-            msg = f"Не удалось получить курс для {currency_code}"
+            rate = get_exchange_rate(currency_code, target_currency)
+            revenue = amount * rate
+        except Exception as e:
+            msg = f"Не удалось получить курс {currency_code}→{target_currency}: {str(e)}"
             return False, msg
-        
-        usd_wallet = portfolio.get_wallet("USD")
-        if not usd_wallet:
-            usd_wallet = portfolio.add_wallet("USD")
-        
+    
+        target_wallet = portfolio.get_wallet(target_currency)
+        if not target_wallet:
+            target_wallet = portfolio.add_wallet(target_currency)
+    
         try:
             source_wallet.withdraw(amount)
-            usd_wallet.deposit(revenue_usd)
+            target_wallet.deposit(revenue)
         except Exception as e:
             return False, str(e)
-        
+    
         for i, p in enumerate(portfolios):
             if p["user_id"] == user.user_id:
                 portfolios[i] = portfolio.to_dict()
                 break
-        
+    
         save_json("data/portfolios.json", portfolios)
-        
+    
         sold = format_currency(amount, currency_code)
-        revenue = format_currency(revenue_usd, 'USD')
-        msg = f"Продано {sold} за {revenue}"
+        received = format_currency(revenue, target_currency)
+        msg = f"Продано {sold} за {received}"
         return True, msg
     
     @log_action("DEPOSIT")
