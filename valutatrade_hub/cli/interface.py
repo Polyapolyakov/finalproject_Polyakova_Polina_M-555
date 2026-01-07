@@ -29,6 +29,8 @@ class SimpleCLI:
             return self._register(args[1:])
         elif command == "login":
             return self._login(args[1:])
+        elif command == "deposit":
+            return self._deposit(args[1:])
         elif command == "portfolio":
             return self._portfolio(args[1:])
         elif command == "buy":
@@ -75,7 +77,7 @@ class SimpleCLI:
                 elif command == "login":
                     self._login(args)
                 elif command == "deposit":
-                    self._deposit(args[1:])
+                    self._deposit(args)
                 elif command == "portfolio":
                     self._portfolio(args)
                 elif command == "buy":
@@ -161,34 +163,12 @@ class SimpleCLI:
             amount = float(args[1])
         except ValueError:
             print("Ошибка: количество должно быть числом")
+            print("Пример: deposit USD 100")
             return 1
         
-        portfolios = load_json("data/portfolios.json", [])
-        user = self.user_manager.current_user
-        
-        if not user:
-            print("Сначала выполните login")
-            return 1
-        
-        # Находим портфель пользователя
-        for portfolio in portfolios:
-            if portfolio.get("user_id") == user.user_id:
-                currency = args[0].upper()
-                if "wallets" not in portfolio:
-                    portfolio["wallets"] = {}
-                if currency not in portfolio["wallets"]:
-                    portfolio["wallets"][currency] = {
-                        "currency_code": currency,
-                        "balance": 0.0
-                    }
-                
-                portfolio["wallets"][currency]["balance"] += amount
-                save_json("data/portfolios.json", portfolios)
-                print(f"Успешно пополнено: {format_currency(amount, currency)}")
-                return 0
-        
-        print("Портфель не найден")
-        return 1
+        success, message = self.portfolio_manager.deposit(args[0], amount)
+        print("Успех" if success else "Ошибка", message)
+        return 0 if success else 1
 
     def _portfolio(self, args):
         base_currency = args[0] if args else "USD"

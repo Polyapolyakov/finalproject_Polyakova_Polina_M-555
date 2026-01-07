@@ -6,7 +6,7 @@ from .models import (
     User, Portfolio, get_currency,
     CurrencyNotFoundError, InsufficientFundsError
 )
-from .decorators import log_action
+from valutatrade_hub.decorators import log_action
 from .utils import (
     load_json, save_json, hash_password, get_next_user_id,
     get_exchange_rate, format_currency
@@ -87,7 +87,6 @@ class PortfolioManager:
         
         portfolio = Portfolio.from_dict(portfolio_data)
         
-        # Создание таблицы
         table = PrettyTable()
         columns = ["Валюта", "Баланс", f"Стоимость в {base_currency}"]
         table.field_names = columns
@@ -249,6 +248,58 @@ class PortfolioManager:
         sold = format_currency(amount, currency_code)
         revenue = format_currency(revenue_usd, 'USD')
         msg = f"Продано {sold} за {revenue}"
+        return True, msg
+    
+    @log_action("DEPOSIT")
+    def deposit(self, currency_code: str, amount: float) -> Tuple[bool, str]:
+        if not self.user_manager.is_logged_in():
+            return False, "Сначала выполните login"
+        
+        if amount <= 0:
+            msg = "Сумма пополнения должна быть положительной"
+            return False, msg
+        
+        try:
+            currency = get_currency(currency_code)
+        except CurrencyNotFoundError:
+            msg = f"Неизвестная валюта '{currency_code}'"
+            return False, msg
+        
+        user = self.user_manager.current_user
+        
+        portfolios = load_json("data/portfolios.json", [])
+        portfolio_data = next(
+            (p for p in portfolios if p["user_id"] == user.user_id),
+            {}
+        )
+        
+        if not portfolio_data:
+            portfolio = Portfolio(user.user_id)
+        else:
+            portfolio = Portfolio.from_dict(portfolio_data)
+        
+        wallet = portfolio.get_wallet(currency_code)
+        if not wallet:
+            wallet = portfolio.add_wallet(currency_code)
+        
+        wallet.deposit(amount)
+        
+        portfolio_dict = portfolio.to_dict()
+        
+        updated = False
+        for i, p in enumerate(portfolios):
+            if p.get("user_id") == user.user_id:
+                portfolios[i] = portfolio_dict
+                updated = True
+                break
+        
+        if not updated:
+            portfolios.append(portfolio_dict)
+        
+        save_json("data/portfolios.json", portfolios)
+        
+        deposited = format_currency(amount, currency_code)
+        msg = f"Успешно пополнено: {deposited}"
         return True, msg
     
     @log_action("GET_RATE")
